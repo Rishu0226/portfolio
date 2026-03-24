@@ -1,14 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import crypto from "crypto";
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, phone, subject, message } = await req.json();
+    const { name, email, phone, subject, message, botField, otp, otpHash, recaptchaToken } = await req.json();
 
-    if (!name || !email || !message) {
+    // ✅ Honeypot validation
+    if (botField) {
+      return NextResponse.json({ success: true }); // silently ignore bots
+    }
+
+    // ✅ reCAPTCHA Validation
+    if (!recaptchaToken) {
+      return NextResponse.json({ error: "Please complete the reCAPTCHA challenge." }, { status: 400 });
+    }
+    const recaptchaSecret = process.env.RECAPTCHA_SECRET_KEY;
+    if (recaptchaSecret) {
+      const verifyRes = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `secret=${recaptchaSecret}&response=${recaptchaToken}`,
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyData.success) {
+        console.error("reCAPTCHA Error:", verifyData);
+        return NextResponse.json({ 
+          error: "reCAPTCHA verification failed.", 
+          details: verifyData["error-codes"] 
+        }, { status: 400 });
+      }
+    }
+
+    // ✅ OTP Validation
+    if (!otp || !otpHash) {
+      return NextResponse.json({ error: "Please verify your email with the OTP first." }, { status: 400 });
+    }
+    const secret = process.env.OTP_SECRET || "fallback_default_secret_key_change_me_in_prod";
+    const expectedHash = crypto.createHash("sha256").update(`${email}:${otp}:${secret}`).digest("hex");
+    if (expectedHash !== otpHash) {
+      return NextResponse.json({ error: "Invalid or expired OTP." }, { status: 400 });
+    }
+
+    // ✅ Name validation
+    if (!name || name.trim().length < 2) {
       return NextResponse.json(
-        { error: "Name, email, and message are required." },
-        { status: 400 }
+        { error: "Please enter a valid name (min 2 characters)." },
+        { status: 400 },
+      );
+    }
+
+    // ✅ Email validation (regex)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: "Please enter a valid email address." },
+        { status: 400 },
+      );
+    }
+
+    // ✅ Phone validation (Indian format)
+    const phoneRegex = /^[6-9]\d{9}$/;
+    if (phone && !phoneRegex.test(phone)) {
+      return NextResponse.json(
+        { error: "Please enter a valid 10-digit phone number." },
+        { status: 400 },
+      );
+    }
+
+    // ✅ Message validation
+    if (!message || message.trim().length < 5) {
+      return NextResponse.json(
+        { error: "Message must be at least 5 characters long." },
+        { status: 400 },
       );
     }
 
@@ -77,7 +141,7 @@ export async function POST(req: NextRequest) {
     console.error("Mail error:", err);
     return NextResponse.json(
       { error: "Failed to send message. Please try again." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

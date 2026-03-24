@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, FormEvent } from "react";
+import ReCAPTCHA from "react-google-recaptcha";
 
 /* ─── TYPES ─── */
 type Category = "All" | "SaaS & Business" | "E-Commerce" | "Web & Marketing";
@@ -300,11 +301,11 @@ const statCards = [
 ];
 const contactItems = [
   {
-    href: "mailto:rishabhdubey104@gmail.com",
+    href: "https://mail.google.com/mail/?view=cm&fs=1&to=rishabhdubey104@gmail.com",
     icon: "✉",
     label: "Email",
     value: "rishabhdubey104@gmail.com",
-    external: false,
+    external: true,
   },
   {
     href: "tel:+917417437418",
@@ -341,11 +342,17 @@ export default function Home() {
     phone: "",
     subject: "",
     message: "",
+    botField: "",
+    otp: "",
   });
+  const [otpHash, setOtpHash] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
   const [formState, setFormState] = useState<
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [formMsg, setFormMsg] = useState("");
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -415,20 +422,72 @@ export default function Home() {
       ? projects
       : projects.filter((p) => p.cat === activeTab);
 
+  const handleSendOtp = async () => {
+    if (!form.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      setFormState("error");
+      setFormMsg("Please enter a valid email first.");
+      setTimeout(() => setFormState("idle"), 3000);
+      return;
+    }
+    setSendingOtp(true);
+    setFormState("loading");
+    try {
+      const res = await fetch("/api/contact/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.email }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setOtpHash(data.hash);
+        setOtpSent(true);
+        setFormState("success");
+        setFormMsg("OTP sent to your email!");
+      } else {
+        setFormState("error");
+        setFormMsg(data.error || "Failed to send OTP.");
+      }
+    } catch {
+      setFormState("error");
+      setFormMsg("Network error.");
+    }
+    setSendingOtp(false);
+    setTimeout(() => setFormState("idle"), 5000);
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setFormState("loading");
+    
+    if (!otpSent || !form.otp) {
+      setFormState("error");
+      setFormMsg("Please verify your email with OTP first.");
+      setTimeout(() => setFormState("idle"), 3000);
+      return;
+    }
+
+    const recaptchaToken = recaptchaRef.current?.getValue();
+    if (!recaptchaToken) {
+      setFormState("error");
+      setFormMsg("Please complete the reCAPTCHA challenge.");
+      setTimeout(() => setFormState("idle"), 3000);
+      return;
+    }
+
     try {
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, otpHash, recaptchaToken }),
       });
       const data = await res.json();
       if (res.ok) {
         setFormState("success");
         setFormMsg("✓ Message sent! I'll get back to you within 24 hours.");
-        setForm({ name: "", email: "", phone: "", subject: "", message: "" });
+        setForm({ name: "", email: "", phone: "", subject: "", message: "", botField: "", otp: "" });
+        setOtpHash("");
+        setOtpSent(false);
+        recaptchaRef.current?.reset();
       } else {
         setFormState("error");
         setFormMsg(data.error || "Something went wrong. Please try again.");
@@ -443,32 +502,30 @@ export default function Home() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Clash+Display:wght@400;500;600;700&family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
+        /*
+         * FONTS:
+         * — Raleway       → headings / display / logo / nav labels (wght 400–900)
+         * — Poppins       → body copy, buttons, labels, UI text (wght 300–700)
+         * — JetBrains Mono → code block only (wght 400–600)
+         */
+        @import url('https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
         :root {
-          /* ── NEW PREMIUM GRADIENT PALETTE ── */
-          --c1: #0f0c29;        /* deep indigo-black */
-          --c2: #0a1628;        /* navy */
-          --bg: #080b14;        /* near-black base */
+          /* ── COLOUR PALETTE ── */
+          --c1: #0f0c29;
+          --c2: #0a1628;
+          --bg: #080b14;
           --surface: #0c1020;
 
-          /* Primary accent: electric teal-cyan */
           --teal:    #00d2c8;
           --teal2:   #00b4d8;
-
-          /* Secondary: violet-purple */
           --violet:  #7c3aed;
           --violet2: #a855f7;
-
-          /* Tertiary: warm emerald */
           --emerald: #10b981;
           --emerald2:#34d399;
-
-          /* Gold accent for highlights */
           --gold:    #f59e0b;
           --gold2:   #fbbf24;
 
-          /* Hero gradient used throughout */
           --grad-main: linear-gradient(135deg, #00d2c8 0%, #7c3aed 50%, #a855f7 100%);
           --grad-alt:  linear-gradient(135deg, #10b981 0%, #00b4d8 50%, #7c3aed 100%);
           --grad-warm: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #7c3aed 100%);
@@ -480,17 +537,25 @@ export default function Home() {
           --card:   rgba(12,16,32,.75);
           --radius: 16px;
           --nav-h:  68px;
+
+          /* ── FONT FAMILIES ── */
+          --font-display: 'Raleway', sans-serif;   /* headings, logo, nav */
+          --font-body:    'Poppins', sans-serif;    /* all body / UI text  */
+          --font-mono:    'JetBrains Mono', monospace; /* code block       */
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html { scroll-behavior: smooth; font-size: 16px; }
+
         body {
-          font-family: 'DM Sans', sans-serif;
+          font-family: var(--font-body);
+          font-weight: 400;
           background: var(--bg);
           color: var(--text);
           overflow-x: hidden;
           line-height: 1.65;
         }
+
         a { text-decoration: none; color: inherit; }
         ul { list-style: none; }
         button { cursor: pointer; font: inherit; border: none; background: none; }
@@ -510,7 +575,6 @@ export default function Home() {
             radial-gradient(ellipse 50% 40% at 50% 50%, rgba(16,185,129,.04) 0%, transparent 60%);
           pointer-events: none; z-index: 0;
         }
-
         body::after {
           content: '';
           position: fixed; inset: 0;
@@ -532,12 +596,13 @@ export default function Home() {
         .reveal.d1 { transition-delay: .1s; } .reveal.d2 { transition-delay: .2s; }
         .reveal.d3 { transition-delay: .3s; } .reveal.d4 { transition-delay: .4s; }
 
-        /* ── FADEIN HERO ── */
+        /* ── FADE-UP HERO ── */
         @keyframes fadeUp { from { opacity:0; transform:translateY(26px); } to { opacity:1; transform:none; } }
         .fu  { animation: fadeUp .7s ease both; }
         .fu1 { animation-delay: .1s; } .fu2 { animation-delay: .2s; }
         .fu3 { animation-delay: .3s; } .fu4 { animation-delay: .4s; }
         .fu5 { animation-delay: .5s; }
+
         @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
         @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
 
@@ -546,19 +611,53 @@ export default function Home() {
 
         /* ── SECTION LABELS ── */
         .s-label {
-          font-family: 'Syne', sans-serif; font-size: .72rem; letter-spacing: .22em;
-          text-transform: uppercase; font-weight: 700; margin-bottom: 10px;
-          background: var(--grad-main); -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent; background-clip: text;
+          /* Poppins 600 small-caps label */
+          font-family: var(--font-body);
+          font-weight: 600;
+          font-size: .72rem;
+          letter-spacing: .22em;
+          text-transform: uppercase;
+          margin-bottom: 10px;
+          background: var(--grad-main);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
+
         .s-title {
-          font-family: 'Syne', sans-serif;
+          /* Raleway 800 — display heading */
+          font-family: var(--font-display);
           font-size: clamp(1.9rem, 5vw, 3.2rem);
-          font-weight: 800; line-height: 1.1; margin-bottom: 48px;
+          font-weight: 800;
+          line-height: 1.1;
+          margin-bottom: 48px;
+          letter-spacing: -.02em;
         }
         .s-title span {
-          background: var(--grad-main); -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent; background-clip: text;
+          background: var(--grad-main);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        /* ── RECAPTCHA SCALING ── */
+        .recaptcha-wrapper {
+          display: flex;
+          justify-content: flex-start;
+          width: 100%;
+          overflow: hidden;
+        }
+        @media (max-width: 380px) {
+          .recaptcha-wrapper iframe {
+            transform: scale(0.85);
+            transform-origin: 0 0;
+          }
+        }
+        @media (max-width: 340px) {
+          .recaptcha-wrapper iframe {
+            transform: scale(0.75);
+            transform-origin: 0 0;
+          }
         }
 
         /* ════════════════════════════════
@@ -576,18 +675,29 @@ export default function Home() {
         nav:not(.scrolled) { background: rgba(8,11,20,.78); }
 
         .nav-logo {
-          font-family: 'Syne', sans-serif; font-size: 1.45rem; font-weight: 800;
-          letter-spacing: -.02em;
-          background: var(--grad-main); -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent; background-clip: text;
+          /* Raleway 800 — bold brand mark */
+          font-family: var(--font-display);
+          font-size: 1.45rem;
+          font-weight: 800;
+          letter-spacing: -.01em;
+          background: var(--grad-main);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
           flex-shrink: 0;
         }
 
         .nav-links { display: flex; gap: clamp(20px, 3vw, 40px); }
         .nav-links button {
-          font-family: 'Syne', sans-serif; font-size: .85rem; font-weight: 600;
-          color: var(--muted); letter-spacing: .04em; transition: color .3s;
-          background: none; border: none; cursor: pointer; position: relative; padding: 2px 0;
+          /* Raleway 600 — nav items */
+          font-family: var(--font-display);
+          font-size: .88rem;
+          font-weight: 600;
+          color: var(--muted);
+          letter-spacing: .05em;
+          transition: color .3s;
+          background: none; border: none; cursor: pointer;
+          position: relative; padding: 2px 0;
         }
         .nav-links button::after {
           content: ''; position: absolute; left: 0; bottom: -3px;
@@ -614,7 +724,10 @@ export default function Home() {
         .mobile-nav button {
           display: block; width: 100%; text-align: left;
           padding: 13px clamp(20px, 5vw, 40px);
-          font-family: 'Syne', sans-serif; font-size: 1.05rem; font-weight: 700;
+          /* Raleway 700 mobile nav items */
+          font-family: var(--font-display);
+          font-size: 1.05rem;
+          font-weight: 700;
           color: var(--muted); background: none; border: none; cursor: pointer; transition: color .2s;
         }
         .mobile-nav button:hover { color: var(--teal); }
@@ -638,43 +751,94 @@ export default function Home() {
           padding: 6px 16px; border-radius: 99px;
           border: 1px solid rgba(0,210,200,.25);
           background: rgba(0,210,200,.07);
-          font-size: .78rem; font-weight: 600; color: var(--teal); margin-bottom: 22px;
+          /* Poppins 600 — badge label */
+          font-family: var(--font-body);
+          font-size: .78rem;
+          font-weight: 600;
+          color: var(--teal); margin-bottom: 22px;
         }
         .badge-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--emerald2); box-shadow: 0 0 8px var(--emerald); animation: pulse 2s infinite; }
 
-        .hero-greeting { font-size: 1.05rem; color: var(--muted); margin-bottom: 6px; }
+        .hero-greeting {
+          /* Poppins 300 italic — greeting line */
+          font-family: var(--font-body);
+          font-size: 1.05rem;
+          font-weight: 300;
+          font-style: italic;
+          color: var(--muted); margin-bottom: 6px;
+        }
+
         .hero-name {
-          font-family: 'Syne', sans-serif;
+          /* Raleway 900 — maximum display weight */
+          font-family: var(--font-display);
           font-size: clamp(3.2rem, 8vw, 6.5rem);
-          font-weight: 800; line-height: .93; letter-spacing: -.03em; margin-bottom: 18px;
+          font-weight: 900;
+          line-height: .93;
+          letter-spacing: -.04em;
+          margin-bottom: 18px;
         }
         .hero-name .l1 { display: block; color: var(--text); }
         .hero-name .l2 {
           display: block;
           background: var(--grad-main);
           background-size: 200% auto;
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
           animation: shimmer 4s linear infinite;
         }
 
-        .hero-role { font-size: 1.15rem; font-weight: 300; color: var(--muted); margin-bottom: 18px; }
-        .hero-role strong { color: var(--text); font-weight: 600; }
-        .hero-desc { font-size: .97rem; line-height: 1.78; color: var(--muted); max-width: 520px; margin-bottom: 34px; }
+        .hero-role {
+          /* Poppins 300 — subtitle role */
+          font-family: var(--font-body);
+          font-size: 1.1rem;
+          font-weight: 300;
+          color: var(--muted); margin-bottom: 18px;
+        }
+        .hero-role strong {
+          /* Poppins 600 inside role line */
+          font-weight: 600;
+          color: var(--text);
+        }
+
+        .hero-desc {
+          /* Poppins 400 — body description */
+          font-family: var(--font-body);
+          font-size: .97rem;
+          font-weight: 400;
+          line-height: 1.78;
+          color: var(--muted); max-width: 520px; margin-bottom: 34px;
+        }
 
         .hero-stats { display: flex; gap: clamp(16px, 4vw, 32px); margin-bottom: 38px; flex-wrap: wrap; }
         .stat-num {
-          display: block; font-family: 'Syne', sans-serif;
-          font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 800;
-          background: var(--grad-main); -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent; background-clip: text;
+          display: block;
+          /* Raleway 800 — stat numbers */
+          font-family: var(--font-display);
+          font-size: clamp(1.5rem, 4vw, 2rem);
+          font-weight: 800;
+          background: var(--grad-main);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
-        .stat-lbl { font-size: .7rem; color: var(--muted); }
+        .stat-lbl {
+          /* Poppins 500 — stat label */
+          font-family: var(--font-body);
+          font-size: .7rem;
+          font-weight: 500;
+          color: var(--muted);
+        }
 
         .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 30px; }
         .btn-p {
           display: inline-flex; align-items: center; gap: 8px;
           padding: 13px clamp(20px, 3vw, 30px); border-radius: 10px;
-          font-family: 'Syne', sans-serif; font-size: .88rem; font-weight: 700;
+          /* Raleway 700 — primary CTA */
+          font-family: var(--font-display);
+          font-size: .9rem;
+          font-weight: 700;
+          letter-spacing: .03em;
           background: var(--grad-main); color: #fff;
           box-shadow: 0 4px 24px rgba(0,210,200,.3); transition: .3s;
         }
@@ -682,7 +846,11 @@ export default function Home() {
         .btn-o {
           display: inline-flex; align-items: center; gap: 8px;
           padding: 13px clamp(20px, 3vw, 30px); border-radius: 10px;
-          font-family: 'Syne', sans-serif; font-size: .88rem; font-weight: 700;
+          /* Raleway 600 — secondary CTA */
+          font-family: var(--font-display);
+          font-size: .9rem;
+          font-weight: 600;
+          letter-spacing: .03em;
           border: 1.5px solid rgba(0,210,200,.3); color: var(--text);
           background: rgba(0,210,200,.05); transition: .3s;
         }
@@ -693,7 +861,11 @@ export default function Home() {
           width: 40px; height: 40px; border-radius: 10px;
           border: 1.5px solid var(--border);
           display: flex; align-items: center; justify-content: center;
-          font-size: .78rem; font-weight: 700; color: var(--muted); transition: .3s;
+          /* Poppins 700 — icon labels */
+          font-family: var(--font-body);
+          font-size: .78rem;
+          font-weight: 700;
+          color: var(--muted); transition: .3s;
         }
         .sl:hover { border-color: var(--teal); color: var(--teal); background: rgba(0,210,200,.1); transform: translateY(-3px); }
 
@@ -718,21 +890,38 @@ export default function Home() {
         .card-dots { display: flex; gap: 6px; margin-bottom: 18px; }
         .cd { width: 11px; height: 11px; border-radius: 50%; }
         .cd1 { background: #f87171; } .cd2 { background: #fbbf24; } .cd3 { background: var(--emerald2); }
-        .code { font-family: 'Courier New', monospace; font-size: .8rem; line-height: 1.9; color: #7c8da8; }
+
+        /* JetBrains Mono 500 — code block */
+        .code {
+          font-family: var(--font-mono);
+          font-size: .8rem;
+          font-weight: 500;
+          line-height: 1.9;
+          color: #a8b2d1;
+        }
         .ck { color: var(--teal); } .cs { color: var(--emerald2); }
-        .cp { color: #4b5563; } .cv { color: #c084fc; } .cc { color: #374151; font-style: italic; } .cf { color: var(--teal2); }
+        .cp { color: #cbd5e1; } .cv { color: #c084fc; } .cc { color: #94a3b8; font-style: italic; } .cf { color: var(--teal2); }
+
         .hero-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 20px; }
         .htag {
           padding: 4px 11px; border-radius: 99px;
-          border: 1px solid rgba(0,210,200,.15); font-size: .7rem;
-          font-weight: 600; color: var(--muted); background: rgba(0,210,200,.04);
+          border: 1px solid rgba(0,210,200,.15);
+          /* Poppins 500 — tag pills */
+          font-family: var(--font-body);
+          font-size: .7rem;
+          font-weight: 500;
+          color: var(--muted); background: rgba(0,210,200,.04);
         }
+
         .float-badge {
           position: absolute; bottom: -16px; right: 20px;
           background: var(--grad-main); color: #fff;
-          font-size: .7rem; font-weight: 800;
+          /* Raleway 800 — floating badge */
+          font-family: var(--font-display);
+          font-size: .7rem;
+          font-weight: 800;
           padding: 7px 14px; border-radius: 8px;
-          font-family: 'Syne', sans-serif; letter-spacing: .05em;
+          letter-spacing: .06em;
           box-shadow: 0 6px 24px rgba(0,210,200,.35);
         }
 
@@ -751,21 +940,53 @@ export default function Home() {
         .about-card::before { content: ''; position: absolute; inset: 0; background: var(--grad-card); }
         .about-card:hover { border-color: rgba(0,210,200,.4); transform: translateY(-5px); box-shadow: 0 16px 40px rgba(0,210,200,.1); }
         .about-card-icon { font-size: 1.7rem; margin-bottom: 8px; }
-        .about-card h3 { font-family: 'Syne', sans-serif; font-size: clamp(.95rem,2vw,1.1rem); font-weight: 700; color: var(--text); margin-bottom: 5px; }
-        .about-card p { font-size: .78rem; color: var(--muted); line-height: 1.5; white-space: pre-line; }
+
+        .about-card h3 {
+          /* Raleway 700 — card heading */
+          font-family: var(--font-display);
+          font-size: clamp(.95rem,2vw,1.1rem);
+          font-weight: 700;
+          color: var(--text); margin-bottom: 5px;
+        }
+        .about-card p {
+          /* Poppins 400 — card body */
+          font-family: var(--font-body);
+          font-size: .78rem;
+          font-weight: 400;
+          color: var(--muted); line-height: 1.5; white-space: pre-line;
+        }
+
         .about-text-block { display: flex; flex-direction: column; gap: 18px; }
-        .about-text { font-size: .97rem; color: var(--muted); line-height: 1.82; }
-        .about-text strong { color: var(--text); font-weight: 600; }
+        .about-text {
+          /* Poppins 400 — body paragraphs */
+          font-family: var(--font-body);
+          font-size: .97rem;
+          font-weight: 400;
+          color: var(--muted); line-height: 1.82;
+        }
+        .about-text strong {
+          /* Poppins 600 — inline emphasis */
+          font-weight: 600;
+          color: var(--text);
+        }
+
         .hl {
           background: linear-gradient(135deg, rgba(0,210,200,.12), rgba(124,58,237,.12));
-          color: var(--teal); font-weight: 600;
+          color: var(--teal);
+          /* Poppins 600 — highlight chip */
+          font-weight: 600;
           padding: 1px 7px; border-radius: 5px;
           border: 1px solid rgba(0,210,200,.15);
         }
+
         .tech-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
         .tpill {
           padding: 5px 14px; border-radius: 99px;
-          border: 1px solid var(--border); font-size: .76rem;
+          border: 1px solid var(--border);
+          /* Poppins 500 — tech pill */
+          font-family: var(--font-body);
+          font-size: .76rem;
+          font-weight: 500;
           color: var(--muted); background: rgba(0,210,200,.04); transition: .3s;
         }
         .tpill:hover { border-color: var(--teal); color: var(--teal); background: rgba(0,210,200,.09); }
@@ -782,14 +1003,28 @@ export default function Home() {
           backdrop-filter: blur(16px); transition: .35s;
         }
         .skill-cat:hover { border-color: rgba(0,210,200,.3); box-shadow: 0 8px 32px rgba(0,210,200,.06); }
-        .skill-cat-head { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 700; }
+
+        .skill-cat-head {
+          display: flex; align-items: center; gap: 10px; margin-bottom: 22px;
+          /* Raleway 700 — skill category heading */
+          font-family: var(--font-display);
+          font-size: 1rem;
+          font-weight: 700;
+        }
         .skill-cat-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: .88rem; }
         .bg-a { background: rgba(0,210,200,.15); }
         .bg-b { background: rgba(124,58,237,.15); }
         .bg-c { background: rgba(16,185,129,.15); }
+
         .skill-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
         .skill-item:last-child { border: none; }
-        .skill-name { font-size: .86rem; color: var(--text); }
+        .skill-name {
+          /* Poppins 400 — skill label */
+          font-family: var(--font-body);
+          font-size: .86rem;
+          font-weight: 400;
+          color: var(--text);
+        }
         .skill-bar-wrap { width: 88px; height: 4px; background: rgba(255,255,255,.07); border-radius: 2px; overflow: hidden; }
         .skill-bar { height: 100%; border-radius: 2px; background: var(--grad-main); width: 0; transition: width 1.3s cubic-bezier(.4,0,.2,1); }
 
@@ -815,17 +1050,41 @@ export default function Home() {
           backdrop-filter: blur(16px); transition: .35s;
         }
         .tl-card:hover { border-color: rgba(0,210,200,.3); transform: translateX(6px); box-shadow: 0 8px 32px rgba(0,0,0,.25); }
+
         .tl-date {
           display: inline-flex;
           background: linear-gradient(135deg, rgba(0,210,200,.12), rgba(124,58,237,.12));
           border: 1px solid rgba(0,210,200,.2); color: var(--teal);
-          font-size: .73rem; font-weight: 700; padding: 3px 12px;
-          border-radius: 99px; margin-bottom: 10px; font-family: 'Syne', sans-serif;
+          /* Poppins 600 — date badge */
+          font-family: var(--font-body);
+          font-size: .73rem;
+          font-weight: 600;
+          padding: 3px 12px; border-radius: 99px; margin-bottom: 10px;
         }
-        .tl-role { font-family: 'Syne', sans-serif; font-size: clamp(.95rem,2vw,1.1rem); font-weight: 700; color: var(--text); margin-bottom: 3px; }
-        .tl-company { font-size: .88rem; color: var(--teal2); font-weight: 600; margin-bottom: 13px; }
+
+        .tl-role {
+          /* Raleway 700 — job title */
+          font-family: var(--font-display);
+          font-size: clamp(.95rem,2vw,1.1rem);
+          font-weight: 700;
+          color: var(--text); margin-bottom: 3px;
+        }
+        .tl-company {
+          /* Poppins 600 — company name */
+          font-family: var(--font-body);
+          font-size: .88rem;
+          font-weight: 600;
+          color: var(--teal2); margin-bottom: 13px;
+        }
+
         .tl-pts { display: flex; flex-direction: column; gap: 7px; }
-        .tl-pts li { font-size: .86rem; color: var(--muted); line-height: 1.68; padding-left: 14px; position: relative; }
+        .tl-pts li {
+          /* Poppins 400 — bullet points */
+          font-family: var(--font-body);
+          font-size: .86rem;
+          font-weight: 400;
+          color: var(--muted); line-height: 1.68; padding-left: 14px; position: relative;
+        }
         .tl-pts li::before { content: '▸'; position: absolute; left: 0; color: var(--teal); font-size: .68rem; top: 2px; }
 
         /* ════════════════════════════════
@@ -833,18 +1092,24 @@ export default function Home() {
         ════════════════════════════════ */
         #projects { position: relative; z-index: 1; background: var(--surface); padding: clamp(60px,10vw,100px) clamp(16px,5vw,24px); }
         .projects-inner { max-width: 1200px; margin: 0 auto; }
+
         .filter-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 44px; }
         .ftab {
           padding: 8px clamp(14px,2.5vw,22px); border-radius: 99px;
-          border: 1.5px solid var(--border); font-size: .8rem; font-weight: 700;
-          color: var(--muted); font-family: 'Syne', sans-serif; transition: .3s;
-          white-space: nowrap;
+          border: 1.5px solid var(--border);
+          /* Raleway 700 — filter tab */
+          font-family: var(--font-display);
+          font-size: .82rem;
+          font-weight: 700;
+          letter-spacing: .03em;
+          color: var(--muted); transition: .3s; white-space: nowrap;
         }
         .ftab:hover { border-color: var(--teal); color: var(--teal); }
         .ftab.active {
           background: var(--grad-main); border-color: transparent; color: #fff;
           box-shadow: 0 4px 18px rgba(0,210,200,.3);
         }
+
         .projects-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
         .proj-card {
           position: relative; background: var(--card); border: 1px solid var(--border);
@@ -859,16 +1124,56 @@ export default function Home() {
         }
         .proj-card:hover { border-color: rgba(0,210,200,.35); transform: translateY(-6px); box-shadow: 0 20px 50px rgba(0,0,0,.45), 0 0 0 1px rgba(0,210,200,.1); }
         .proj-card:hover::after { opacity: 1; }
-        .proj-num { font-family: 'Syne', sans-serif; font-size: 2rem; font-weight: 800; color: rgba(0,210,200,.1); line-height: 1; }
-        .proj-cat { display: inline-flex; padding: 3px 10px; border-radius: 99px; font-size: .68rem; font-weight: 800; letter-spacing: .06em; width: fit-content; text-transform: uppercase; }
+
+        .proj-num {
+          /* Raleway 800 — large project number */
+          font-family: var(--font-display);
+          font-size: 2rem;
+          font-weight: 800;
+          color: rgba(0,210,200,.1); line-height: 1;
+        }
+
+        .proj-cat { display: inline-flex; padding: 3px 10px; border-radius: 99px; font-size: .68rem; font-weight: 700; letter-spacing: .06em; width: fit-content; text-transform: uppercase;
+          /* Poppins 700 — category badge */
+          font-family: var(--font-body);
+        }
         .cat-saas { background: rgba(0,210,200,.12); color: var(--teal); border: 1px solid rgba(0,210,200,.2); }
         .cat-ecom { background: rgba(124,58,237,.12); color: var(--violet2); border: 1px solid rgba(124,58,237,.2); }
         .cat-web  { background: rgba(16,185,129,.12); color: var(--emerald2); border: 1px solid rgba(16,185,129,.2); }
-        .proj-title { font-family: 'Syne', sans-serif; font-size: clamp(.95rem,2vw,1.05rem); font-weight: 700; color: var(--text); line-height: 1.3; }
-        .proj-desc { font-size: .8rem; color: var(--muted); line-height: 1.68; flex: 1; }
+
+        .proj-title {
+          /* Raleway 700 — project name */
+          font-family: var(--font-display);
+          font-size: clamp(.95rem,2vw,1.05rem);
+          font-weight: 700;
+          color: var(--text); line-height: 1.3;
+        }
+        .proj-desc {
+          /* Poppins 400 — project description */
+          font-family: var(--font-body);
+          font-size: .8rem;
+          font-weight: 400;
+          color: var(--muted); line-height: 1.68; flex: 1;
+        }
+
         .proj-tech { display: flex; flex-wrap: wrap; gap: 5px; }
-        .proj-tag { padding: 3px 9px; border-radius: 6px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); font-size: .68rem; color: var(--muted); }
-        .proj-link { font-size: .78rem; font-weight: 700; color: var(--teal); font-family: 'Syne', sans-serif; display: flex; align-items: center; gap: 4px; transition: gap .3s; }
+        .proj-tag {
+          padding: 3px 9px; border-radius: 6px;
+          background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
+          /* Poppins 500 — tech tag */
+          font-family: var(--font-body);
+          font-size: .68rem;
+          font-weight: 500;
+          color: var(--muted);
+        }
+
+        .proj-link {
+          /* Raleway 700 — visit link */
+          font-family: var(--font-display);
+          font-size: .78rem;
+          font-weight: 700;
+          color: var(--teal); display: flex; align-items: center; gap: 4px; transition: gap .3s;
+        }
         .proj-card:hover .proj-link { gap: 9px; }
 
         /* ════════════════════════════════
@@ -877,7 +1182,15 @@ export default function Home() {
         #contact { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: clamp(60px,10vw,100px) clamp(16px,5vw,24px); }
         .contact-wrap { display: grid; grid-template-columns: 1fr 1.6fr; gap: clamp(32px,5vw,56px); align-items: start; }
         .contact-info { display: flex; flex-direction: column; gap: 18px; }
-        .contact-info-title { font-family: 'Syne', sans-serif; font-size: clamp(1.2rem,3vw,1.5rem); font-weight: 700; color: var(--text); margin-bottom: 4px; }
+
+        .contact-info-title {
+          /* Raleway 700 — sidebar heading */
+          font-family: var(--font-display);
+          font-size: clamp(1.2rem,3vw,1.5rem);
+          font-weight: 700;
+          color: var(--text); margin-bottom: 4px;
+        }
+
         .c-item {
           display: flex; align-items: center; gap: 14px;
           padding: clamp(12px,2vw,16px) clamp(14px,2.5vw,20px);
@@ -889,39 +1202,84 @@ export default function Home() {
           width: 42px; height: 42px; border-radius: 11px; flex-shrink: 0;
           background: linear-gradient(135deg, rgba(0,210,200,.12), rgba(124,58,237,.12));
           border: 1px solid rgba(0,210,200,.2);
-          display: flex; align-items: center; justify-content: center; font-size: .95rem; font-weight: 700;
+          display: flex; align-items: center; justify-content: center;
+          /* Poppins 700 — icon text */
+          font-family: var(--font-body);
+          font-size: .95rem;
+          font-weight: 700;
         }
-        .c-label { font-size: .72rem; color: var(--muted); margin-bottom: 1px; }
-        .c-value { font-size: .85rem; color: var(--text); font-weight: 600; }
+        .c-label {
+          /* Poppins 500 — field label */
+          font-family: var(--font-body);
+          font-size: .72rem;
+          font-weight: 500;
+          color: var(--muted); margin-bottom: 1px;
+        }
+        .c-value {
+          /* Poppins 600 — field value */
+          font-family: var(--font-body);
+          font-size: .85rem;
+          font-weight: 600;
+          color: var(--text);
+        }
+
         .form-card {
           background: var(--card); border: 1px solid rgba(0,210,200,.15);
           border-radius: 20px; padding: clamp(24px,4vw,36px);
           backdrop-filter: blur(16px);
         }
-        .form-card h3 { font-family: 'Syne', sans-serif; font-size: clamp(1.3rem,3vw,1.55rem); font-weight: 800; margin-bottom: 5px; }
-        .form-card p { font-size: .875rem; color: var(--muted); margin-bottom: 26px; line-height: 1.65; }
+        .form-card h3 {
+          /* Raleway 800 — form heading */
+          font-family: var(--font-display);
+          font-size: clamp(1.3rem,3vw,1.55rem);
+          font-weight: 800;
+          margin-bottom: 5px;
+        }
+        .form-card p {
+          /* Poppins 400 — form subheading */
+          font-family: var(--font-body);
+          font-size: .875rem;
+          font-weight: 400;
+          color: var(--muted); margin-bottom: 26px; line-height: 1.65;
+        }
+
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
-        .form-group label { font-size: .76rem; color: var(--muted); font-weight: 600; }
+        .form-group label {
+          /* Poppins 600 — input label */
+          font-family: var(--font-body);
+          font-size: .76rem;
+          font-weight: 600;
+          color: var(--muted);
+        }
         .form-input, .form-textarea {
           background: rgba(255,255,255,.04); border: 1.5px solid rgba(255,255,255,.07);
           border-radius: 10px; padding: 11px 14px; color: var(--text);
-          font-family: 'DM Sans', sans-serif; font-size: .87rem;
+          /* Poppins 400 — input text */
+          font-family: var(--font-body);
+          font-size: .87rem;
+          font-weight: 400;
           transition: border-color .3s; outline: none; resize: none; width: 100%;
         }
         .form-input:focus, .form-textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(0,210,200,.08); }
         .form-textarea { min-height: 118px; }
         .form-input::placeholder, .form-textarea::placeholder { color: #2d3748; }
+
         .btn-submit {
           width: 100%; padding: 14px;
           background: var(--grad-main); color: #fff;
-          font-family: 'Syne', sans-serif; font-size: .92rem; font-weight: 800;
+          /* Raleway 800 — submit button */
+          font-family: var(--font-display);
+          font-size: .95rem;
+          font-weight: 800;
+          letter-spacing: .04em;
           border-radius: 10px; cursor: pointer; transition: .3s;
           box-shadow: 0 4px 20px rgba(0,210,200,.28); border: none;
         }
         .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 10px 36px rgba(0,210,200,.42); }
         .btn-submit:disabled { opacity: .6; cursor: not-allowed; transform: none; }
-        .form-msg { padding: 11px 15px; border-radius: 10px; font-size: .855rem; margin-bottom: 18px; }
+
+        .form-msg { padding: 11px 15px; border-radius: 10px; font-size: .855rem; margin-bottom: 18px; font-family: var(--font-body); font-weight: 400; }
         .form-msg.success { background: rgba(16,185,129,.1); border: 1px solid rgba(16,185,129,.22); color: #6ee7b7; }
         .form-msg.error   { background: rgba(239,68,68,.1);  border: 1px solid rgba(239,68,68,.22);  color: #fca5a5; }
 
@@ -935,14 +1293,23 @@ export default function Home() {
           display: flex; flex-direction: column; align-items: center; gap: 18px;
         }
         .footer-logo {
-          font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 800;
-          background: var(--grad-main); -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent; background-clip: text;
+          /* Raleway 800 — footer brand */
+          font-family: var(--font-display);
+          font-size: 1.4rem;
+          font-weight: 800;
+          background: var(--grad-main);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
         .footer-links { display: flex; gap: clamp(14px,3vw,28px); flex-wrap: wrap; justify-content: center; }
         .footer-links button {
-          font-size: .8rem; color: var(--muted); font-family: 'Syne', sans-serif;
-          font-weight: 600; letter-spacing: .04em; transition: color .2s;
+          /* Raleway 600 — footer nav */
+          font-family: var(--font-display);
+          font-size: .82rem;
+          font-weight: 600;
+          letter-spacing: .04em;
+          color: var(--muted); transition: color .2s;
           background: none; border: none; cursor: pointer;
         }
         .footer-links button:hover { color: var(--teal); }
@@ -951,13 +1318,24 @@ export default function Home() {
           width: 36px; height: 36px; border-radius: 9px;
           border: 1.5px solid var(--border);
           display: flex; align-items: center; justify-content: center;
-          font-size: .74rem; font-weight: 800; color: var(--muted); transition: .3s;
+          /* Poppins 700 — social icon */
+          font-family: var(--font-body);
+          font-size: .74rem;
+          font-weight: 700;
+          color: var(--muted); transition: .3s;
         }
         .fsoc:hover { border-color: var(--teal); color: var(--teal); background: rgba(0,210,200,.08); transform: translateY(-3px); }
-        .footer-copy { font-size: .76rem; color: var(--muted); }
+
+        .footer-copy {
+          /* Poppins 400 — copyright */
+          font-family: var(--font-body);
+          font-size: .76rem;
+          font-weight: 400;
+          color: var(--muted);
+        }
 
         /* ════════════════════════════════
-           RESPONSIVE — ALL BREAKPOINTS
+           RESPONSIVE
         ════════════════════════════════ */
         @media (max-width: 1024px) {
           .hero-inner { grid-template-columns: 1fr; gap: 48px; }
@@ -967,7 +1345,6 @@ export default function Home() {
           .projects-grid { grid-template-columns: 1fr 1fr; }
           .contact-wrap { grid-template-columns: 1fr; }
         }
-
         @media (max-width: 768px) {
           :root { --nav-h: 62px; }
           nav { padding: 0 18px; }
@@ -982,7 +1359,6 @@ export default function Home() {
           .tl-item { padding-left: 40px; }
           .tl-dot { left: 3px; width: 13px; height: 13px; }
         }
-
         @media (max-width: 600px) {
           .about-cards { grid-template-columns: 1fr 1fr; }
           .filter-tabs { gap: 6px; }
@@ -991,7 +1367,6 @@ export default function Home() {
           .btn-p, .btn-o { width: 100%; justify-content: center; }
           .hero-card { display: none; }
         }
-
         @media (max-width: 400px) {
           .about-cards { grid-template-columns: 1fr; }
           .hero-stats { flex-wrap: wrap; gap: 14px; }
@@ -1100,10 +1475,10 @@ export default function Home() {
                   ext: true,
                 },
                 {
-                  href: "mailto:rishabhdubey104@gmail.com",
+                  href: "https://mail.google.com/mail/?view=cm&fs=1&to=rishabhdubey104@gmail.com",
                   label: "Email",
                   icon: "✉",
-                  ext: false,
+                  ext: true,
                 },
                 {
                   href: "tel:+917417437418",
@@ -1457,17 +1832,31 @@ export default function Home() {
                 </div>
                 <div className="form-group">
                   <label htmlFor="email">Email *</label>
-                  <input
-                    id="email"
-                    type="email"
-                    className="form-input"
-                    placeholder="rahul@company.com"
-                    required
-                    value={form.email}
-                    onChange={(e) =>
-                      setForm({ ...form, email: e.target.value })
-                    }
-                  />
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      id="email"
+                      type="email"
+                      className="form-input"
+                      style={{ flex: 1 }}
+                      placeholder="rahul@company.com"
+                      required
+                      disabled={otpSent}
+                      value={form.email}
+                      onChange={(e) =>
+                        setForm({ ...form, email: e.target.value })
+                      }
+                    />
+                    {!otpSent && (
+                      <button 
+                        type="button" 
+                        onClick={handleSendOtp}
+                        disabled={sendingOtp || !form.email}
+                        style={{ padding: "0 16px", borderRadius: "10px", background: "var(--grad-main)", color: "#fff", border: "none", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", opacity: (!form.email || sendingOtp) ? 0.6 : 1, transition: "0.3s" }}
+                      >
+                        {sendingOtp ? "Wait..." : "Verify"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="form-row">
@@ -1512,6 +1901,47 @@ export default function Home() {
                   }
                 />
               </div>
+              
+              {/* Honeypot field - hidden from users */}
+              <div className="form-group" style={{ position: "absolute", left: "-9999px", top: "-9999px" }} aria-hidden="true">
+                <label htmlFor="botField">Leave this field empty</label>
+                <input
+                  id="botField"
+                  type="text"
+                  tabIndex={-1}
+                  value={form.botField}
+                  onChange={(e) => setForm({ ...form, botField: e.target.value })}
+                />
+              </div>
+
+              {/* OTP Verification */}
+              {otpSent && (
+                <div className="form-group" style={{ marginBottom: "16px" }}>
+                  <label htmlFor="otp">Enter 6-digit OTP sent to your email *</label>
+                  <input
+                    id="otp"
+                    type="text"
+                    className="form-input"
+                    placeholder="123456"
+                    required
+                    maxLength={6}
+                    value={form.otp}
+                    onChange={(e) => setForm({ ...form, otp: e.target.value })}
+                  />
+                </div>
+              )}
+
+              {/* reCAPTCHA */}
+              <div className="form-group" style={{ marginBottom: "20px" }}>
+                <div className="recaptcha-wrapper">
+                  <ReCAPTCHA
+                    ref={recaptchaRef}
+                    sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "YOUR_RECAPTCHA_SITE_KEY_HERE"}
+                    theme="dark"
+                  />
+                </div>
+              </div>
+
               <button
                 type="submit"
                 className="btn-submit"
@@ -1549,7 +1979,7 @@ export default function Home() {
               icon: "GH",
             },
             {
-              href: "mailto:rishabhdubey104@gmail.com",
+              href: "https://mail.google.com/mail/?view=cm&fs=1&to=rishabhdubey104@gmail.com",
               label: "Email",
               icon: "✉",
             },
