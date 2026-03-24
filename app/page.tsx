@@ -1936,7 +1936,7 @@ export default function Home() {
                 <div className="recaptcha-wrapper">
                   <ReCAPTCHA
                     ref={recaptchaRef}
-                    sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "YOUR_RECAPTCHA_SITE_KEY_HERE"}
+                    sitekey={process.env.RECAPTCHA_SITE_KEY || "YOUR_RECAPTCHA_SITE_KEY_HERE"}
                     theme="dark"
                   />
                 </div>
