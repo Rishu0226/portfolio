@@ -315,7 +315,7 @@ const contactItems = [
     external: false,
   },
   {
-    href: "https://linkedin.com/in/er-rishabh-dubey-64b73b1a1",
+    href: "https://www.linkedin.com/in/rishabh-dubey-64b73b1a1/",
     icon: "in",
     label: "LinkedIn",
     value: "er-rishabh-dubey",
@@ -1463,7 +1463,7 @@ export default function Home() {
             <div className="socials fu fu5">
               {[
                 {
-                  href: "https://linkedin.com/in/er-rishabh-dubey-64b73b1a1",
+                  href: "https://www.linkedin.com/in/rishabh-dubey-64b73b1a1/",
                   label: "LinkedIn",
                   icon: "in",
                   ext: true,
@@ -1969,7 +1969,7 @@ export default function Home() {
         <div className="footer-socials">
           {[
             {
-              href: "https://linkedin.com/in/er-rishabh-dubey-64b73b1a1",
+              href: "https://www.linkedin.com/in/rishabh-dubey-64b73b1a1/",
               label: "LinkedIn",
               icon: "in",
             },
